@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DeckForge Simulation Sandbox</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        /* Make the log scrollable so history doesn't take over the page */
+        #eventLog { max-height: 600px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: #f9f9f9; }
+        pre { background: #eee; padding: 10px; border: 1px solid #999; overflow-x: auto; }
+        .log-item { margin-bottom: 4px; border-left: 3px solid #007bff; padding-left: 8px; }
+        button { font-size: 16px; padding: 10px 20px; cursor: pointer; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <h2>DeckForge Simulation Sandbox</h2>
+    <p>Player A starts with 20 Health. Click to run next turn.</p>
+    <button onclick="runNextTurn()">Run Next Turn</button>
+    <hr>
+    <h3>Game State (Current Turn)</h3>
+    <pre id="gameStateDisplay"></pre>
+    <h3>Event Log (History)</h3>
+    <div id="eventLog"></div>
+
+    <script src="js/card-data.js"></script>
+    <script src="js/engine.js"></script>
+    <script>
+        function runNextTurn() {
+            // NOTE: We DO NOT clear the log here anymore. 
+            // We let it grow so we can see the history.
+            
+            // 1. Execute the full turn logic
+            runTurn();
+            
+            // 2. Update the UI 
+            document.getElementById('gameStateDisplay').textContent = JSON.stringify(GAME_STATE.players, null, 2);
+            
+            // Render the full accumulated log
+            // We scroll to the bottom automatically to see the latest action
+            const logDiv = document.getElementById('eventLog');
+            logDiv.innerHTML = GAME_STATE.eventLog.map(log => `<div class="log-item">${log}</div>`).join('');
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Initialize display on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('gameStateDisplay').textContent = JSON.stringify(GAME_STATE.players, null, 2);
+        });
+    </script>
+</body>
+</html>
