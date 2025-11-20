@@ -17,12 +17,13 @@ function getCardCost(cardData, activePlayerId) {
     let cost = cardData.inkCost;
     const activePlayer = GAME_STATE.players[activePlayerId];
     
-    activePlayer.modifiers.forEach(mod => {
-        if (mod.type === 'CostReduction' && cardData.keywords.includes(mod.targetTag)) {
-            cost = Math.max(0, cost - mod.value);
-        }
-    });
-
+    if (activePlayer.modifiers) {
+        activePlayer.modifiers.forEach(mod => {
+            if (mod.type === 'CostReduction' && cardData.keywords.includes(mod.targetTag)) {
+                cost = Math.max(0, cost - mod.value);
+            }
+        });
+    }
     return cost; 
 }
 
@@ -31,8 +32,12 @@ function consumeInk(player, amount) {
         return false; // Not enough ready ink
     }
     
-    player.resources.filter(r => !r.exerted).slice(0, amount).forEach(inkSlot => {
-        inkSlot.exerted = true;
+    let paid = 0;
+    player.resources.forEach(inkSlot => {
+        if (!inkSlot.exerted && paid < amount) {
+            inkSlot.exerted = true;
+            paid++;
+        }
     });
     
     return true;
@@ -130,7 +135,6 @@ function canAffordAndPlay(player, cardIndex, actionType) {
     // A. INK ACTION
     if (actionType === 'ink') {
         if (player.inkUsedThisTurn) {
-            GAME_STATE.eventLog.push(`[FAIL] ${player.id} has already used their Ink for this turn.`);
             return false;
         }
         return inkCard(player, cardIndex);
@@ -169,7 +173,6 @@ function canAffordAndPlay(player, cardIndex, actionType) {
 // --- COMBAT UTILITIES ---
 
 function banishCard(player, opponent, banishedCard) {
-    // 1. Remove card from its owner's board
     const owner = GAME_STATE.players[banishedCard.ownerId];
     const originalBoardLength = owner.board.length;
     
@@ -182,13 +185,15 @@ function banishCard(player, opponent, banishedCard) {
 
     GAME_STATE.eventLog.push(`[BANISH] ${banishedCard.name} was banished.`);
 
-    // 2. Trigger Reactive Modifiers (e.g., Mickey Mouse's Ceaseless Worker)
+    // 2. Trigger Reactive Modifiers
     [player, opponent].forEach(p => {
-        p.reactiveModifiers.forEach(mod => {
-            if (mod.type === 'OnBanished') {
-                mod.effect(GAME_STATE, banishedCard);
-            }
-        });
+        if (p.reactiveModifiers) {
+            p.reactiveModifiers.forEach(mod => {
+                if (mod.type === 'OnBanished') {
+                    mod.effect(GAME_STATE, banishedCard);
+                }
+            });
+        }
     });
 }
 
@@ -198,6 +203,8 @@ function calculateCombat(attacker, defender, activePlayer, opponent) {
     // 1. Apply Damage (Simultaneous)
     defender.damage += attacker.strength;
     attacker.damage += defender.strength;
+    
+    GAME_STATE.eventLog.push(`--> ${attacker.name} takes ${defender.strength} dmg. ${defender.name} takes ${attacker.strength} dmg.`);
 
     // 2. Check for Banishment
     let banishedCount = 0;
@@ -235,7 +242,7 @@ function attemptChallenge(player, opponent) {
 
     if (readyChallengers.length > 0 && exertedTargets.length > 0) {
         const attacker = readyChallengers[0]; // Strongest ready attacker
-        const defender = exertedTargets[0]; // Simplest target: the first exerted card
+        const defender = exertedTargets[0]; // Simpliest target: the first exerted card
 
         // Exert attacker (Core Rule)
         attacker.exerted = true;
@@ -249,49 +256,52 @@ function attemptChallenge(player, opponent) {
 }
 
 
-// --- INITIAL DECK SETUP (STABLE LOGIC) ---
+// --- INITIAL DECK SETUP (CORRECTED, DISTINCT DECK LOGIC) ---
 function initializeDeckForTest(playerId) {
     const player = GAME_STATE.players[playerId];
     
-    // Get the Goofy card for the test
-    const goofyCard = masterCardData.find(c => c.id === "C1-073");
-    const simbaCard = masterCardData.find(c => c.id === "C020-C1"); 
+    // Define the required cards using correct IDs
+    const goofyCard = masterCardData.find(c => c.id === "C1-073"); // Player A's attacker
+    const simbaCard = masterCardData.find(c => c.id === "C1-168"); // Player B's defender 
 
     const dummyCard = { name: "Dummy Card", exerted: false, isInkable: true, inkCost: 1 };
     
-    const deckStack = [];
+    let deckStack = [];
 
-    // STACK FOR T1-T4 DRAW (Draws T1, T2, T3, Goofy on T4)
-    deckStack.push({...dummyCard}, {...dummyCard}, {...dummyCard}); 
-    if (goofyCard) {
-        deckStack.push({...goofyCard}); 
-    } else {
-        deckStack.push({...dummyCard});
-    }
-
-    // Stack the remaining 56 cards as dummies
-    for (let i = 0; i < 56; i++) {
-        deckStack.push({...dummyCard});
+    if (playerId === 'A') {
+        // --- PLAYER A (Attacker Setup) ---
+        // T1, T2, T3 Draw: Inkables (3 cards)
+        deckStack.push({...dummyCard}, {...dummyCard}, {...dummyCard}); 
+        // T4, T5 Draw: Goofy (2 cards)
+        if (goofyCard) {
+            deckStack.push({...goofyCard}); 
+            deckStack.push({...goofyCard}); 
+        } else {
+            deckStack.push({...dummyCard}, {...dummyCard});
+        }
+        // Remaining 55 cards
+        for (let i = 0; i < 55; i++) { deckStack.push({...dummyCard}); }
+        
+    } else if (playerId === 'B') {
+        // --- PLAYER B (Defender Setup) ---
+        // T1, T2, T3 Draw: Inkables (3 cards)
+        deckStack.push({...dummyCard}, {...dummyCard}, {...dummyCard}); 
+        // T4, T5 Draw: Simba (2 cards)
+        if (simbaCard) {
+            deckStack.push({...simbaCard});
+            deckStack.push({...simbaCard});
+        } else {
+            deckStack.push({...dummyCard}, {...dummyCard});
+        }
+        // Remaining 55 cards (Total 60)
+        for (let i = 0; i < 55; i++) { deckStack.push({...dummyCard}); }
     }
     
-    // Assign the new deck (60 total cards).
+    // Assign the new deck and reverse (to use .pop() draw)
     player.deck = deckStack;
-    player.deck.reverse(); // Reverse for POP() draw
-
-    // --- SETUP FOR COMBAT TEST (Opponent B starts with an exerted Simba) ---
-    if (playerId === 'B' && simbaCard) {
-        GAME_STATE.players['B'].board.push({
-            ...simbaCard,
-            instanceId: Date.now() + 1000,
-            exerted: true, 
-            damage: 0,
-            ownerId: 'B',
-            turnPlayed: 0
-        });
-        GAME_STATE.eventLog.push(`[SETUP] Opponent B placed Simba (2/2) on board, exerted.`);
-    }
+    player.deck.reverse(); 
     
-    GAME_STATE.eventLog.push(`[SETUP] ${playerId}'s deck initialized (Goofy Card staged for T4).`);
+    GAME_STATE.eventLog.push(`[SETUP] ${playerId}'s deck initialized. Total cards: ${player.deck.length}`);
 }
 
 // --- GAME PHASE LOGIC ---
@@ -304,13 +314,16 @@ function beginningPhase(player) {
         inkSlot.exerted = false; 
     });
     player.board.forEach(card => {
-        const denialMod = card.modifiers.find(mod => mod.type === "ReadyDenial");
+        // *** CRITICAL FIX: Add check for card.modifiers before finding ***
+        const denialMod = card.modifiers ? card.modifiers.find(mod => mod.type === "ReadyDenial") : null;
+        
         if (!denialMod) {
-            card.exerted = false; 
-            GAME_STATE.eventLog.push(`-> ${card.name} readies.`);
+            if (card.exerted) {
+                card.exerted = false; 
+                GAME_STATE.eventLog.push(`-> ${card.name} readies.`);
+            }
         }
     });
-    GAME_STATE.eventLog.push(`-> All exertable cards ready.`);
 
     // B. SET
     player.board.forEach(card => {
@@ -331,18 +344,31 @@ function endTurnPhase(player) {
     player.inkUsedThisTurn = false;
 }
 
-// --- MAIN LOOP ORCHESTRATOR (WITH PLAYER SWITCH FIX) ---
+// --- MAIN LOOP ORCHESTRATOR (FINAL STABLE LOGIC) ---
 
 function runTurn() {
     // 1. DETERMINE CURRENT PLAYER
     const currentPlayerId = GAME_STATE.activePlayerId;
     const player = GAME_STATE.players[currentPlayerId];
     
-    // --- INITIALIZATION (Run only on Turn 1) ---
-    if (GAME_STATE.turn === 1) {
+    // --- INITIALIZATION (Run only on Turn 1 and if the deck is empty) ---
+    if (GAME_STATE.turn === 1 && player.deck.length === 0) {
         initializeDeckForTest('A');
         initializeDeckForTest('B'); 
-        // NOTE: activePlayerId is already 'A' from the global definition.
+        
+        // --- STAGE SIMBA MANUALLY (The final, correct staging for combat) ---
+        const simbaCard = masterCardData.find(c => c.id === "C1-168");
+        if (simbaCard) {
+            GAME_STATE.players['B'].board.push({
+                ...simbaCard,
+                instanceId: Date.now() + 1000,
+                exerted: true, // Start exerted for Challenge targeting
+                damage: 0,
+                ownerId: 'B',
+                turnPlayed: 0
+            });
+            GAME_STATE.eventLog.push(`[SETUP] Opponent B placed Simba (2/2) on board, EXERTED.`);
+        }
     }
     
     GAME_STATE.eventLog.push(`--- TURN ${GAME_STATE.turn}: START (${currentPlayerId}) ---`);
@@ -354,7 +380,7 @@ function runTurn() {
 
     GAME_STATE.eventLog.push(`--- TURN ${GAME_STATE.turn}: END (${currentPlayerId}) ---`);
     
-    // 3. ADVANCE STATE (CRITICAL FIX)
+    // 3. ADVANCE STATE
     GAME_STATE.turn++; 
     GAME_STATE.activePlayerId = (currentPlayerId === 'A' ? 'B' : 'A'); 
 }
@@ -386,7 +412,7 @@ function modifier_CeaselessWorker(characterInstance) {
         targetTag: 'Broom',
         sourceCard: characterInstance.name,
         
-        effect: (gameState, banishedCard) => { // NOTE: Corrected parameter name here
+        effect: (gameState, banishedCard) => {
             if (banishedCard.keywords.includes("Broom") && banishedCard.ownerId === activePlayer.id) {
                 activePlayer.hand.push(banishedCard); 
                 GAME_STATE.eventLog.push(`[REACT] ${characterInstance.name} triggered: ${banishedCard.name} returned to hand.`);
