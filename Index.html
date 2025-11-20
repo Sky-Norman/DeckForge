@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DeckForge Simulation Sandbox</title>
+    <style>
+        body { font-family: sans-serif; }
+        pre { background: #eee; padding: 10px; overflow-x: scroll; }
+        .log-item { margin-bottom: 5px; border-left: 3px solid #007bff; padding-left: 5px; }
+    </style>
+</head>
+<body>
+    <h2>DeckForge Simulation Sandbox</h2>
+    <p>Player A starts with 20 Health. Click to run next turn.</p>
+    <button onclick="runSampleSimulation()">Run Sample Turn</button>
+    <hr>
+    <h3>Game State (Current Turn)</h3>
+    <pre id="gameStateDisplay"></pre>
+    <h3>Event Log</h3>
+    <div id="eventLog"></div>
+
+    <script src="js/card-data.js"></script>
+    <script src="js/engine.js"></script>
+    <script>
+        // Start the simulation loop
+        function runSampleSimulation() {
+            // Clear previous log entries before running a new turn
+            GAME_STATE.eventLog = []; 
+
+            // Execute the full turn loop using the global state
+            runTurn();
+            
+            // Update the UI after the turn
+            document.getElementById('gameStateDisplay').textContent = JSON.stringify(GAME_STATE.players, null, 2);
+            document.getElementById('eventLog').innerHTML = GAME_STATE.eventLog.map(log => `<div class="log-item">${log}</div>`).join('');
+        }
+
+        // Initialize display on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('gameStateDisplay').textContent = JSON.stringify(GAME_STATE.players, null, 2);
+        });
+    </script>
+</body>
+</html>
